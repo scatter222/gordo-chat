@@ -14,6 +14,7 @@ import {
   Divider,
   CircularProgress,
   useMediaQuery,
+  Tooltip,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -21,6 +22,8 @@ import {
   Logout,
   DarkMode,
   LightMode,
+  AddCircle,
+  Message,
 } from '@mui/icons-material';
 import { useTheme as useMuiTheme } from '@mui/material/styles';
 import { useSession, signOut } from 'next-auth/react';
@@ -29,6 +32,7 @@ import { Channel, User } from '@/types';
 import { ChannelList } from '@/components/chat/ChannelList';
 import { ChatInterface } from '@/components/chat/ChatInterface';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import { UserSearch } from '@/components/chat/UserSearch';
 import { useTheme } from '@/components/providers/ThemeProvider';
 
 const drawerWidth = 280;
@@ -46,6 +50,7 @@ export default function DashboardPage() {
   const [isLoadingChannels, setIsLoadingChannels] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -111,6 +116,36 @@ export default function DashboardPage() {
     router.push('/auth/login');
   };
 
+  const handleSelectUserForDM = async (user: User) => {
+    try {
+      // Create or get existing DM channel
+      const response = await fetch('/api/channels/direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId: user._id }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const dmChannel = data.data;
+
+        // Add to channels if not already there
+        setChannels(prev => {
+          const exists = prev.find(ch => ch._id === dmChannel._id);
+          return exists ? prev : [dmChannel, ...prev];
+        });
+
+        // Select the DM channel
+        setCurrentChannel(dmChannel);
+        if (isMobile) {
+          setMobileOpen(false);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create DM:', error);
+    }
+  };
+
   if (status === 'loading' || isLoadingChannels) {
     return (
       <Box
@@ -157,11 +192,41 @@ export default function DashboardPage() {
 
       <Divider />
 
+      {/* New DM Button */}
+      <Box sx={{ p: 2 }}>
+        <Tooltip title="Start Direct Message">
+          <Box
+            onClick={() => setUserSearchOpen(true)}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              p: 1,
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 1,
+              cursor: 'pointer',
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
+            }}
+          >
+            <Message fontSize="small" />
+            <Typography variant="caption" sx={{ flex: 1 }}>
+              New Message
+            </Typography>
+          </Box>
+        </Tooltip>
+      </Box>
+
+      <Divider />
+
       {/* Channels List */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         <ChannelList
           channels={channels}
           currentChannelId={currentChannel?._id}
+          currentUserId={currentUser?._id}
           onChannelSelect={handleChannelSelect}
         />
       </Box>
@@ -321,6 +386,13 @@ export default function DashboardPage() {
           Logout
         </MenuItem>
       </Menu>
+
+      {/* User Search Dialog */}
+      <UserSearch
+        open={userSearchOpen}
+        onClose={() => setUserSearchOpen(false)}
+        onSelectUser={handleSelectUserForDM}
+      />
     </Box>
   );
 }

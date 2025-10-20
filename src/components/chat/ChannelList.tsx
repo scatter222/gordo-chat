@@ -36,6 +36,7 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 interface ChannelListProps {
   channels: Channel[];
   currentChannelId?: string;
+  currentUserId?: string;
   onChannelSelect: (channel: Channel) => void;
   onCreateChannel?: () => void;
   onChannelSettings?: (channel: Channel) => void;
@@ -51,6 +52,7 @@ interface ChannelGroup {
 export function ChannelList({
   channels,
   currentChannelId,
+  currentUserId,
   onChannelSelect,
   onCreateChannel,
   onChannelSettings,
@@ -89,7 +91,7 @@ export function ChannelList({
   const renderChannelIcon = (channel: Channel) => {
     if (channel.type === 'direct') {
       const otherUser = Array.isArray(channel.members) &&
-        channel.members.find(m => typeof m === 'object' && m._id !== currentChannelId);
+        channel.members.find(m => typeof m === 'object' && m._id !== currentUserId);
 
       if (otherUser && typeof otherUser === 'object') {
         return (
@@ -122,7 +124,7 @@ export function ChannelList({
   const getChannelDisplayName = (channel: Channel) => {
     if (channel.type === 'direct' && Array.isArray(channel.members)) {
       const otherUser = channel.members.find(m =>
-        typeof m === 'object' && m._id !== currentChannelId
+        typeof m === 'object' && m._id !== currentUserId
       );
       if (otherUser && typeof otherUser === 'object' && 'username' in otherUser) {
         return (otherUser as any).username;
