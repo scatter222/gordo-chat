@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -22,6 +22,7 @@ import {
   Image as ImageIcon,
 } from '@mui/icons-material';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
+import EmojiPicker, { Theme, EmojiClickData } from 'emoji-picker-react';
 import { Message, User } from '@/types';
 import { UserAvatar } from '@/components/common/UserAvatar';
 
@@ -31,7 +32,7 @@ interface MessageItemProps {
   onReply?: (message: Message) => void;
   onEdit?: (message: Message) => void;
   onDelete?: (message: Message) => void;
-  onReact?: (message: Message, emoji: string) => void;
+  onReact?: (messageId: string, emoji: string) => void;
   showAvatar?: boolean;
   isCompact?: boolean;
 }
@@ -48,6 +49,23 @@ export function MessageItem({
 }: MessageItemProps) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [hovering, setHovering] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiPickerAnchor, setEmojiPickerAnchor] = useState<null | HTMLElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showEmojiPicker]);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -55,6 +73,17 @@ export function MessageItem({
 
   const handleMenuClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleReactionButtonClick = (event: React.MouseEvent<HTMLElement>) => {
+    setEmojiPickerAnchor(event.currentTarget);
+    setShowEmojiPicker(!showEmojiPicker);
+  };
+
+  const handleEmojiSelect = (emojiData: EmojiClickData) => {
+    onReact?.(message._id as string, emojiData.emoji);
+    setShowEmojiPicker(false);
+    setEmojiPickerAnchor(null);
   };
 
   const formatTimestamp = (date: Date) => {
@@ -108,7 +137,7 @@ export function MessageItem({
         {!isCompact && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <Typography variant="body1" sx={{ fontWeight: 600 }}>
-              {user?.username || 'Unknown User'}
+              {user?.username || user?.email || 'Unknown User'}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {formatTimestamp(message.createdAt)}
@@ -132,7 +161,7 @@ export function MessageItem({
             }}
           >
             <Typography variant="caption" sx={{ fontWeight: 600 }}>
-              {typeof message.replyTo.userId === 'object' ? message.replyTo.userId.username : 'Unknown'}
+              {typeof message.replyTo.userId === 'object' ? (message.replyTo.userId.username || message.replyTo.userId.email) : 'Unknown'}
             </Typography>
             <Typography variant="body2" noWrap>
               {message.replyTo.content}
@@ -140,7 +169,7 @@ export function MessageItem({
           </Paper>
         )}
 
-        {message.type === 'text' && (
+        {message.content && (
           <Typography
             variant="body1"
             sx={{
@@ -174,7 +203,7 @@ export function MessageItem({
                 key={index}
                 label={`${reaction.emoji} ${reaction.users.length}`}
                 size="small"
-                onClick={() => onReact?.(message, reaction.emoji)}
+                onClick={() => onReact?.(message._id as string, reaction.emoji)}
                 sx={{ cursor: 'pointer' }}
               />
             ))}
@@ -200,10 +229,31 @@ export function MessageItem({
           </Tooltip>
 
           <Tooltip title="React">
-            <IconButton size="small" onClick={() => onReact?.(message, '👍')}>
+            <IconButton size="small" onClick={handleReactionButtonClick}>
               <EmojiEmotions fontSize="small" />
             </IconButton>
           </Tooltip>
+
+          {showEmojiPicker && emojiPickerAnchor && (
+            <Box
+              ref={emojiPickerRef}
+              sx={{
+                position: 'absolute',
+                top: emojiPickerAnchor.offsetTop + emojiPickerAnchor.offsetHeight,
+                right: 8,
+                zIndex: 1000,
+              }}
+            >
+              <EmojiPicker
+                onEmojiClick={handleEmojiSelect}
+                theme={Theme.DARK}
+                searchDisabled
+                skinTonesDisabled
+                height={350}
+                width={300}
+              />
+            </Box>
+          )}
 
           {isOwnMessage && (
             <>

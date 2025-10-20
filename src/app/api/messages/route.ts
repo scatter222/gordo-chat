@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { connectMongoose } from '@/lib/mongodb';
-import Message from '@/models/Message';
-import Channel from '@/models/Channel';
+// Import all models to ensure they're registered for populate operations
+import { Message, Channel, User } from '@/lib/models';
 import { Types } from 'mongoose';
 
 export async function GET(req: NextRequest) {
@@ -63,7 +63,17 @@ export async function GET(req: NextRequest) {
     // Get messages
     const messages = await Message.find(query)
       .populate('userId', 'username avatar status')
-      .populate('replyTo')
+      .populate({
+        path: 'replyTo',
+        populate: {
+          path: 'userId',
+          select: 'username avatar status'
+        }
+      })
+      .populate({
+        path: 'reactions.users',
+        select: 'username avatar status'
+      })
       .populate('mentions', 'username')
       .sort({ createdAt: -1 })
       .limit(limit);
@@ -156,8 +166,18 @@ export async function POST(req: NextRequest) {
     // Populate fields for response
     await message.populate('userId', 'username avatar status');
     if (replyTo) {
-      await message.populate('replyTo');
+      await message.populate({
+        path: 'replyTo',
+        populate: {
+          path: 'userId',
+          select: 'username avatar status'
+        }
+      });
     }
+    await message.populate({
+      path: 'reactions.users',
+      select: 'username avatar status'
+    });
 
     return NextResponse.json({
       success: true,

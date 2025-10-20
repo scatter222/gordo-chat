@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import io, { Socket } from 'socket.io-client';
 import { useSession } from 'next-auth/react';
 import { Message, Channel, User, SocketEvents } from '@/types';
@@ -17,68 +17,121 @@ interface UseSocketOptions {
   onError?: (error: { message: string }) => void;
 }
 
+// Singleton socket instance
+let socketInstance: Socket | null = null;
+let connectionCount = 0;
+
 export function useSocket(options: UseSocketOptions = {}) {
   const { data: session } = useSession();
   const [isConnected, setIsConnected] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
-  const socketRef = useRef<Socket | null>(null);
+  const optionsRef = useRef(options);
 
+  // Update options ref on each render
   useEffect(() => {
-    if (!session?.user) return;
+    optionsRef.current = options;
+  });
 
-    // Initialize socket connection
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000', {
-      auth: {
-        token: (session as any).token, // You'll need to add token to session
-      },
-    });
+  // Initialize socket connection (only once per session)
+  useEffect(() => {
+    if (!session?.user) {
+      if (socketInstance) {
+        console.log('No session, disconnecting socket');
+        socketInstance.disconnect();
+        socketInstance = null;
+        connectionCount = 0;
+      }
+      return;
+    }
 
-    socketRef.current = socket;
-
-    // Connection events
-    socket.on('connect', () => {
-      console.log('Connected to socket server');
+    // If socket already exists and is connected, just update the state
+    if (socketInstance?.connected) {
       setIsConnected(true);
-    });
+      return;
+    }
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from socket server');
-      setIsConnected(false);
-    });
+    // Increment connection count
+    connectionCount++;
+    console.log(`Socket connection attempt #${connectionCount}`);
 
-    socket.on('error', (error) => {
-      console.error('Socket error:', error);
-      options.onError?.(error);
-    });
+    // Only create a new socket if one doesn't exist
+    if (!socketInstance) {
+      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002';
+      console.log('Creating new Socket.io connection to:', socketUrl);
+
+      socketInstance = io(socketUrl, {
+        auth: {
+          token: (session as any).token,
+          userId: session.user.id,
+          username: session.user.name || session.user.email,
+        },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+      });
+
+      // Set up event listeners only once
+      socketInstance.on('connect', () => {
+        console.log('Connected to socket server');
+        setIsConnected(true);
+      });
+
+      socketInstance.on('disconnect', () => {
+        console.log('Disconnected from socket server');
+        setIsConnected(false);
+      });
+
+      socketInstance.on('error', (error) => {
+        console.error('Socket error:', error);
+      });
+    }
+
+    // Connect if not connected
+    if (!socketInstance.connected) {
+      socketInstance.connect();
+    }
+
+    return () => {
+      // Don't disconnect on unmount, keep the connection alive
+      console.log('Component unmounting, keeping socket connection alive');
+    };
+  }, [session?.user?.id]); // Only reconnect if user ID changes
+
+  // Set up event handlers (can change without reconnecting)
+  useEffect(() => {
+    if (!socketInstance) return;
+
+    const socket = socketInstance;
 
     // Message events
-    socket.on('message:receive', (message: Message) => {
-      options.onMessageReceive?.(message);
-    });
+    const handleMessageReceive = (message: Message) => {
+      optionsRef.current.onMessageReceive?.(message);
+    };
 
-    socket.on('message:edit', (data) => {
-      options.onMessageEdit?.(data);
-    });
+    const handleMessageEdit = (data: any) => {
+      optionsRef.current.onMessageEdit?.(data);
+    };
 
-    socket.on('message:delete', (data) => {
-      options.onMessageDelete?.(data);
-    });
+    const handleMessageDelete = (data: any) => {
+      optionsRef.current.onMessageDelete?.(data);
+    };
 
-    socket.on('message:react', (data) => {
-      options.onMessageReact?.(data);
-    });
+    const handleMessageReact = (data: any) => {
+      optionsRef.current.onMessageReact?.(data);
+    };
 
     // User events
-    socket.on('user:join', (data) => {
-      options.onUserJoin?.(data);
-    });
+    const handleUserJoin = (data: any) => {
+      optionsRef.current.onUserJoin?.(data);
+    };
 
-    socket.on('user:leave', (data) => {
-      options.onUserLeave?.(data);
-    });
+    const handleUserLeave = (data: any) => {
+      optionsRef.current.onUserLeave?.(data);
+    };
 
-    socket.on('user:typing', (data) => {
-      options.onUserTyping?.(data);
+    const handleUserTyping = (data: any) => {
+      optionsRef.current.onUserTyping?.(data);
 
       // Update typing users state
       setTypingUsers(prev => {
@@ -100,64 +153,104 @@ export function useSocket(options: UseSocketOptions = {}) {
 
         return prev;
       });
-    });
+    };
 
-    socket.on('user:status', (data) => {
-      options.onUserStatus?.(data);
-    });
+    const handleUserStatus = (data: any) => {
+      optionsRef.current.onUserStatus?.(data);
+    };
+
+    const handleError = (error: any) => {
+      optionsRef.current.onError?.(error);
+    };
+
+    // Add event listeners
+    socket.on('message:receive', handleMessageReceive);
+    socket.on('message:edit', handleMessageEdit);
+    socket.on('message:delete', handleMessageDelete);
+    socket.on('message:react', handleMessageReact);
+    socket.on('user:join', handleUserJoin);
+    socket.on('user:leave', handleUserLeave);
+    socket.on('user:typing', handleUserTyping);
+    socket.on('user:status', handleUserStatus);
+    socket.on('error', handleError);
 
     // Cleanup
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      socket.off('message:receive', handleMessageReceive);
+      socket.off('message:edit', handleMessageEdit);
+      socket.off('message:delete', handleMessageDelete);
+      socket.off('message:react', handleMessageReact);
+      socket.off('user:join', handleUserJoin);
+      socket.off('user:leave', handleUserLeave);
+      socket.off('user:typing', handleUserTyping);
+      socket.off('user:status', handleUserStatus);
+      socket.off('error', handleError);
     };
-  }, [session]);
+  }, []); // Empty deps, handlers use ref
 
-  // Socket methods
-  const joinChannel = (channelId: string) => {
-    socketRef.current?.emit('user:join', { channelId });
-  };
+  // Socket methods - always use the same functions
+  const joinChannel = useCallback((channelId: string) => {
+    if (socketInstance?.connected) {
+      console.log('Joining channel:', channelId);
+      socketInstance.emit('user:join', { channelId });
+    }
+  }, []);
 
-  const leaveChannel = (channelId: string) => {
-    socketRef.current?.emit('user:leave', { channelId });
-  };
+  const leaveChannel = useCallback((channelId: string) => {
+    if (socketInstance?.connected) {
+      console.log('Leaving channel:', channelId);
+      socketInstance.emit('user:leave', { channelId });
+    }
+  }, []);
 
-  const sendMessage = (
+  const sendMessage = useCallback((
     channelId: string,
     content: string,
     attachments?: any[],
     replyTo?: string
   ) => {
-    socketRef.current?.emit('message:send', {
-      channelId,
-      content,
-      attachments,
-      replyTo,
-    });
-  };
+    if (socketInstance?.connected) {
+      socketInstance.emit('message:send', {
+        channelId,
+        content,
+        attachments,
+        replyTo,
+      });
+    }
+  }, []);
 
-  const editMessage = (messageId: string, content: string) => {
-    socketRef.current?.emit('message:edit', { messageId, content });
-  };
+  const editMessage = useCallback((messageId: string, content: string) => {
+    if (socketInstance?.connected) {
+      socketInstance.emit('message:edit', { messageId, content });
+    }
+  }, []);
 
-  const deleteMessage = (messageId: string) => {
-    socketRef.current?.emit('message:delete', { messageId });
-  };
+  const deleteMessage = useCallback((messageId: string) => {
+    if (socketInstance?.connected) {
+      socketInstance.emit('message:delete', { messageId });
+    }
+  }, []);
 
-  const reactToMessage = (messageId: string, emoji: string) => {
-    socketRef.current?.emit('message:react', { messageId, emoji });
-  };
+  const reactToMessage = useCallback((messageId: string, emoji: string) => {
+    if (socketInstance?.connected) {
+      socketInstance.emit('message:react', { messageId, emoji });
+    }
+  }, []);
 
-  const sendTyping = (channelId: string, isTyping: boolean) => {
-    socketRef.current?.emit('user:typing', { channelId, isTyping });
-  };
+  const sendTyping = useCallback((channelId: string, isTyping: boolean) => {
+    if (socketInstance?.connected) {
+      socketInstance.emit('user:typing', { channelId, isTyping });
+    }
+  }, []);
 
-  const markMessageAsRead = (messageId: string) => {
-    socketRef.current?.emit('message:read', { messageId, userId: session?.user?.id });
-  };
+  const markMessageAsRead = useCallback((messageId: string) => {
+    if (socketInstance?.connected) {
+      socketInstance.emit('message:read', { messageId, userId: session?.user?.id });
+    }
+  }, [session?.user?.id]);
 
   return {
-    socket: socketRef.current,
+    socket: socketInstance,
     isConnected,
     typingUsers,
     joinChannel,

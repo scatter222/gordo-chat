@@ -49,7 +49,17 @@ export function MessageInput({
   const [isTyping, setIsTyping] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textFieldRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Auto-focus input when replying
+  useEffect(() => {
+    if (replyTo) {
+      setTimeout(() => {
+        textFieldRef.current?.focus();
+      }, 0);
+    }
+  }, [replyTo]);
 
   useEffect(() => {
     if (message && !isTyping) {
@@ -78,7 +88,7 @@ export function MessageInput({
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [message]);
+  }, [message, isTyping, onTyping]);
 
   const handleSendMessage = async () => {
     if (!message.trim() && attachments.length === 0) return;
@@ -217,6 +227,7 @@ export function MessageInput({
         </Tooltip>
 
         <TextField
+          inputRef={textFieldRef}
           fullWidth
           multiline
           maxRows={4}

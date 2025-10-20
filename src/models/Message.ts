@@ -80,7 +80,7 @@ const MessageSchema = new Schema<IMessage>({
   },
   content: {
     type: String,
-    required: function() {
+    required: function(this: any) {
       return this.type === 'text';
     },
     maxlength: 5000
@@ -133,7 +133,7 @@ MessageSchema.virtual('isDeleted').get(function() {
 // Set JSON output
 MessageSchema.set('toJSON', {
   virtuals: true,
-  transform: function(doc, ret) {
+  transform: function(doc, ret: any) {
     delete ret.__v;
     return ret;
   }

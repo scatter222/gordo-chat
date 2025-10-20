@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { connectMongoose } from '@/lib/mongodb';
-import Channel from '@/models/Channel';
-import User from '@/models/User';
+// Import all models to ensure they're registered for populate operations
+import { Channel, User, Message } from '@/lib/models';
 
 export async function GET(req: NextRequest) {
   try {

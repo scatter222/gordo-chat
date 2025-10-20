@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectMongoose } from '@/lib/mongodb';
-import User from '@/models/User';
-import Channel from '@/models/Channel';
+// Import all models to ensure they're registered
+import { User, Channel } from '@/lib/models';
 import { generateToken } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {

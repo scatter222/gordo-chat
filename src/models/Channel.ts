@@ -80,7 +80,7 @@ ChannelSchema.virtual('memberCount').get(function() {
 // Ensure virtual fields are included in JSON
 ChannelSchema.set('toJSON', {
   virtuals: true,
-  transform: function(doc, ret) {
+  transform: function(doc, ret: any) {
     delete ret.__v;
     return ret;
   }

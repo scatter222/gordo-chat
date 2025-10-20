@@ -4,24 +4,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
-  AppBar,
-  Toolbar,
-  IconButton,
-  Chip,
-  CircularProgress,
+  Paper,
   Divider,
+  IconButton,
   Avatar,
-  AvatarGroup,
-  Tooltip,
+  CircularProgress,
+  Chip,
 } from '@mui/material';
-import {
-  Info,
-  Search,
-  Phone,
-  VideoCall,
-  MoreVert,
-  People,
-} from '@mui/icons-material';
+import { MoreVert, Tag, LockOutlined } from '@mui/icons-material';
 import { Channel, Message, User, Attachment } from '@/types';
 import { MessageItem } from './MessageItem';
 import { MessageInput } from './MessageInput';
@@ -93,7 +83,18 @@ export function ChatInterface({
     },
   });
 
-  // Fetch initial messages
+  // Get channel display name
+  const getChannelDisplayName = () => {
+    if (channel.type === 'direct') {
+      const otherUser = channel.members?.find(
+        (member: any) => member._id !== currentUser?._id
+      );
+      return otherUser?.username || 'Direct Message';
+    }
+    return channel.name;
+  };
+
+  // Fetch messages on channel change
   useEffect(() => {
     const fetchMessages = async () => {
       setIsLoading(true);
@@ -113,34 +114,92 @@ export function ChatInterface({
 
     fetchMessages();
 
-    // Join channel via socket
-    joinChannel(channel._id);
+    // Join channel via socket if connected
+    if (isConnected) {
+      joinChannel(channel._id);
+    }
 
     // Cleanup
     return () => {
-      leaveChannel(channel._id);
+      if (isConnected) {
+        leaveChannel(channel._id);
+      }
     };
-  }, [channel._id]);
+  }, [channel._id, joinChannel, leaveChannel, isConnected]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Use requestAnimationFrame to ensure DOM has updated before scrolling
+    requestAnimationFrame(() => {
+      if (messagesContainerRef.current) {
+        // Add a small extra scroll to account for any padding/margins
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight + 100;
+      }
+    });
   };
 
   const handleSendMessage = async (content: string, attachments?: Attachment[]) => {
     if (editingMessage) {
       // Edit existing message
-      editMessage(editingMessage._id, content);
+      if (isConnected) {
+        editMessage(editingMessage._id, content);
+      } else {
+        // Fallback to API call if not connected
+        try {
+          const response = await fetch(`/api/messages`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messageId: editingMessage._id, content }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setMessages(prev =>
+              prev.map(msg =>
+                msg._id === editingMessage._id
+                  ? { ...msg, content, edited: true, editedAt: new Date() }
+                  : msg
+              )
+            );
+          }
+        } catch (error) {
+          console.error('Failed to edit message:', error);
+        }
+      }
       setEditingMessage(null);
     } else {
-      // Send new message via socket
-      sendMessage(channel._id, content, attachments, replyTo?._id);
+      // Send new message
+      if (isConnected) {
+        sendMessage(channel._id, content, attachments, replyTo?._id);
+      } else {
+        // Fallback to API call if not connected
+        try {
+          const response = await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              channelId: channel._id,
+              content,
+              attachments,
+              replyTo: replyTo?._id,
+            }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setMessages(prev => [...prev, data.data]);
+            scrollToBottom();
+          }
+        } catch (error) {
+          console.error('Failed to send message:', error);
+        }
+      }
       setReplyTo(null);
     }
   };
 
   const handleTyping = useCallback((isTyping: boolean) => {
-    sendTyping(channel._id, isTyping);
-  }, [channel._id]);
+    if (isConnected) {
+      sendTyping(channel._id, isTyping);
+    }
+  }, [channel._id, sendTyping, isConnected]);
 
   const handleReply = (message: Message) => {
     setReplyTo(message);
@@ -152,127 +211,88 @@ export function ChatInterface({
     setReplyTo(null);
   };
 
-  const handleDelete = (message: Message) => {
-    if (confirm('Are you sure you want to delete this message?')) {
-      deleteMessage(message._id);
-    }
-  };
-
-  const handleReact = (message: Message, emoji: string) => {
-    reactToMessage(message._id, emoji);
-  };
-
-  // Get channel display name for DMs
-  const getChannelDisplayName = () => {
-    if (channel.type === 'direct' && Array.isArray(channel.members)) {
-      const otherUser = channel.members.find(m =>
-        typeof m === 'object' && m._id !== currentUser?._id
-      );
-      if (otherUser && typeof otherUser === 'object') {
-        return otherUser.username;
+  const handleDelete = async (messageId: string) => {
+    if (isConnected) {
+      deleteMessage(messageId);
+    } else {
+      // Fallback to API call
+      try {
+        const response = await fetch(`/api/messages`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messageId }),
+        });
+        if (response.ok) {
+          setMessages(prev =>
+            prev.map(msg =>
+              msg._id === messageId
+                ? { ...msg, deletedAt: new Date() }
+                : msg
+            )
+          );
+        }
+      } catch (error) {
+        console.error('Failed to delete message:', error);
       }
     }
-    return channel.name;
+  };
+
+  const handleReact = (messageId: string, emoji: string) => {
+    if (isConnected) {
+      reactToMessage(messageId, emoji);
+    }
   };
 
   // Get typing users for this channel
   const channelTypingUsers = typingUsers[channel._id] || [];
-  const typingUsersFiltered = channelTypingUsers.filter(id => id !== currentUser?._id);
-
-  // Group messages by date
-  const groupedMessages = messages.reduce((groups, message) => {
-    const date = new Date(message.createdAt).toDateString();
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(message);
-    return groups;
-  }, {} as Record<string, Message[]>);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Channel Header */}
-      <AppBar position="static" color="default" elevation={0}>
-        <Toolbar>
-          <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              {channel.type === 'private' && '🔒 '}
-              {getChannelDisplayName()}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar
+            sx={{
+              width: 40,
+              height: 40,
+              bgcolor: channel.type === 'private' ? 'warning.main' : 'primary.main',
+            }}
+          >
+            {channel.type === 'private' ? <LockOutlined /> : <Tag />}
+          </Avatar>
+          <Box>
+            <Typography variant="h6">{getChannelDisplayName()}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {channel.members?.length || 0} members
+              {!isConnected && ' • Not connected (messages will be sent via API)'}
             </Typography>
-
-            {channel.type !== 'direct' && channel.description && (
-              <Typography
-                variant="body2"
-                sx={{ ml: 2, color: 'text.secondary' }}
-                noWrap
-              >
-                {channel.description}
-              </Typography>
-            )}
           </Box>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {channel.type !== 'direct' && (
-              <>
-                <Chip
-                  icon={<People />}
-                  label={channel.memberCount || channel.members.length}
-                  size="small"
-                />
-
-                {Array.isArray(channel.members) && (
-                  <AvatarGroup max={4} sx={{ mr: 2 }}>
-                    {channel.members.slice(0, 4).map((member) => {
-                      const memberData = typeof member === 'object' ? member : null;
-                      return memberData ? (
-                        <Tooltip key={memberData._id} title={memberData.username}>
-                          <Avatar
-                            alt={memberData.username}
-                            src={memberData.avatar}
-                            sx={{ width: 32, height: 32 }}
-                          />
-                        </Tooltip>
-                      ) : null;
-                    })}
-                  </AvatarGroup>
-                )}
-              </>
-            )}
-
-            <IconButton>
-              <Search />
-            </IconButton>
-
-            <IconButton>
-              <Phone />
-            </IconButton>
-
-            <IconButton>
-              <VideoCall />
-            </IconButton>
-
-            <IconButton onClick={onOpenChannelInfo}>
-              <Info />
-            </IconButton>
-
-            <IconButton>
-              <MoreVert />
-            </IconButton>
-          </Box>
-        </Toolbar>
-      </AppBar>
-
-      <Divider />
+        </Box>
+        <IconButton onClick={onOpenChannelInfo}>
+          <MoreVert />
+        </IconButton>
+      </Paper>
 
       {/* Messages Area */}
       <Box
         ref={messagesContainerRef}
         sx={{
           flex: 1,
-          overflow: 'auto',
-          px: 2,
-          py: 1,
-          backgroundColor: 'background.default',
+          overflowY: 'auto',
+          p: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1,
         }}
       >
         {isLoading ? (
@@ -281,75 +301,34 @@ export function ChatInterface({
           </Box>
         ) : messages.length === 0 ? (
           <Box sx={{ textAlign: 'center', p: 4 }}>
-            <Typography variant="body1" color="text.secondary">
+            <Typography color="text.secondary">
               No messages yet. Start the conversation!
             </Typography>
           </Box>
         ) : (
-          <>
-            {Object.entries(groupedMessages).map(([date, dateMessages]) => (
-              <Box key={date}>
-                <Divider sx={{ my: 2 }}>
-                  <Chip
-                    label={
-                      new Date(date).toDateString() === new Date().toDateString()
-                        ? 'Today'
-                        : new Date(date).toDateString() ===
-                          new Date(Date.now() - 86400000).toDateString()
-                        ? 'Yesterday'
-                        : date
-                    }
-                    size="small"
-                    variant="outlined"
-                  />
-                </Divider>
-
-                {dateMessages.map((message, index) => {
-                  const prevMessage = index > 0 ? dateMessages[index - 1] : null;
-                  const showAvatar =
-                    !prevMessage ||
-                    prevMessage.userId !== message.userId ||
-                    new Date(message.createdAt).getTime() -
-                      new Date(prevMessage.createdAt).getTime() >
-                      300000; // 5 minutes
-
-                  return (
-                    <MessageItem
-                      key={message._id}
-                      message={message}
-                      currentUser={currentUser}
-                      onReply={handleReply}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                      onReact={handleReact}
-                      showAvatar={showAvatar}
-                      isCompact={!showAvatar}
-                    />
-                  );
-                })}
-              </Box>
-            ))}
-          </>
+          messages.map((message) => (
+            <MessageItem
+              key={message._id}
+              message={message}
+              currentUser={currentUser}
+              onReply={handleReply}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onReact={handleReact}
+            />
+          ))
         )}
-
-        {/* Typing indicator */}
-        {typingUsersFiltered.length > 0 && (
-          <Box sx={{ p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box className="typing-indicator">
-              <span></span>
-              <span></span>
-              <span></span>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              {typingUsersFiltered.length === 1
-                ? 'Someone is typing...'
-                : `${typingUsersFiltered.length} people are typing...`}
-            </Typography>
-          </Box>
-        )}
-
         <div ref={messagesEndRef} />
       </Box>
+
+      {/* Typing Indicator */}
+      {channelTypingUsers.length > 0 && (
+        <Box sx={{ px: 2, py: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            {channelTypingUsers.join(', ')} {channelTypingUsers.length === 1 ? 'is' : 'are'} typing...
+          </Typography>
+        </Box>
+      )}
 
       <Divider />
 
@@ -359,43 +338,9 @@ export function ChatInterface({
         onTyping={handleTyping}
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
-        disabled={!isConnected}
+        disabled={false} // Always enable input, we'll use API fallback if not connected
         channelName={getChannelDisplayName()}
       />
-
-      <style jsx global>{`
-        .typing-indicator {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .typing-indicator span {
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background-color: #999;
-          animation: typing 1.4s infinite;
-        }
-
-        .typing-indicator span:nth-child(2) {
-          animation-delay: 0.2s;
-        }
-
-        .typing-indicator span:nth-child(3) {
-          animation-delay: 0.4s;
-        }
-
-        @keyframes typing {
-          0%, 60%, 100% {
-            opacity: 0.3;
-          }
-          30% {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </Box>
   );
 }

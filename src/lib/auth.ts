@@ -1,7 +1,8 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { connectMongoose } from './mongodb';
-import User from '@/models/User';
+// Import from centralized models to ensure registration
+import { User } from './models';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -56,9 +57,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
-        token.email = user.email;
-        token.name = user.name;
-        token.picture = user.image;
+        token.email = user.email || '';
+        token.name = user.name || '';
+        token.picture = user.image || undefined;
       }
 
       if (trigger === 'update' && session) {
@@ -74,6 +75,8 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email as string;
         session.user.name = token.name as string;
         session.user.image = token.picture as string;
+        // Add a JWT token for Socket.io authentication
+        (session as any).token = generateToken(token.id as string);
       }
       return session;
     }

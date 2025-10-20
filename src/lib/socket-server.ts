@@ -2,9 +2,9 @@ import { Server as HTTPServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { connectMongoose } from './mongodb';
-import User from '@/models/User';
-import Channel from '@/models/Channel';
-import Message from '@/models/Message';
+// Import all models from centralized location to ensure registration
+import { User, Channel, Message } from './models';
+import { IReaction } from '@/models/Message';
 import { SocketEvents } from '@/types';
 
 interface SocketUser {
@@ -254,7 +254,7 @@ export function initializeSocketServer(httpServer: HTTPServer) {
         }
 
         // Find or create reaction
-        let reaction = message.reactions?.find(r => r.emoji === emoji);
+        let reaction = message.reactions?.find((r: IReaction) => r.emoji === emoji);
 
         if (!reaction) {
           message.reactions = message.reactions || [];
@@ -270,7 +270,7 @@ export function initializeSocketServer(httpServer: HTTPServer) {
 
             // Remove reaction if no users
             if (reaction.users.length === 0) {
-              message.reactions = message.reactions?.filter(r => r.emoji !== emoji);
+              message.reactions = message.reactions?.filter((r: IReaction) => r.emoji !== emoji);
             }
           }
         }
