@@ -152,9 +152,6 @@ export default function DashboardPage() {
           <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
             {currentUser?.username}
           </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
-            {currentUser?.email}
-          </Typography>
         </Box>
       </Box>
 

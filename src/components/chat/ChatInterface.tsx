@@ -89,7 +89,9 @@ export function ChatInterface({
       const otherUser = channel.members?.find(
         (member: any) => member._id !== currentUser?._id
       );
-      return otherUser?.username || 'Direct Message';
+      if (otherUser && typeof otherUser === 'object' && 'username' in otherUser) {
+        return (otherUser as any).username || 'Direct Message';
+      }
     }
     return channel.name;
   };
@@ -211,7 +213,8 @@ export function ChatInterface({
     setReplyTo(null);
   };
 
-  const handleDelete = async (messageId: string) => {
+  const handleDelete = async (message: Message) => {
+    const messageId = message._id;
     if (isConnected) {
       deleteMessage(messageId);
     } else {

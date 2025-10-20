@@ -124,8 +124,8 @@ export function ChannelList({
       const otherUser = channel.members.find(m =>
         typeof m === 'object' && m._id !== currentChannelId
       );
-      if (otherUser && typeof otherUser === 'object') {
-        return otherUser.username;
+      if (otherUser && typeof otherUser === 'object' && 'username' in otherUser) {
+        return (otherUser as any).username;
       }
     }
     return channel.name;

@@ -6,11 +6,14 @@ const { createServer } = require('http');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 
-// Load environment variables
-require('dotenv').config();
+// Load environment variables (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
 
 // MongoDB connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:admin123@localhost:27017/gordo-chat?authSource=admin';
+// Uses 'mongodb' service name for Docker, localhost for local development
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:admin123@mongodb:27017/gordo-chat?authSource=admin';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret-key-for-testing-only';
 
 // Connect to MongoDB
@@ -32,7 +35,16 @@ const Message = require('./src/models-cjs/Message');
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3003'],
+    // Allow both localhost (for development) and Docker service names
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3003',
+      'http://nextjs-app:3000',
+      'http://nextjs-app:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001'
+    ],
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -60,7 +72,7 @@ async function getUserFromAuth(authData) {
     if (authData.token) {
       const decoded = await verifyToken(authData.token);
       if (decoded && decoded.userId) {
-        const user = await User.findById(decoded.userId).select('_id username email avatar status');
+        const user = await User.findById(decoded.userId).select('_id username avatar status');
         if (user) {
           return user;
         }
@@ -69,7 +81,7 @@ async function getUserFromAuth(authData) {
 
     // Fallback to userId if provided
     if (authData.userId) {
-      const user = await User.findById(authData.userId).select('_id username email avatar status');
+      const user = await User.findById(authData.userId).select('_id username avatar status');
       if (user) {
         return user;
       }
@@ -90,7 +102,7 @@ io.on('connection', async (socket) => {
   if (user) {
     socket.data.user = user;
     socket.data.userId = user._id.toString();
-    console.log(`🔐 User authenticated: ${user.username || user.email} (${user._id})`);
+    console.log(`🔐 User authenticated: ${user.username} (${user._id})`);
 
     // Update user status to online
     await User.findByIdAndUpdate(user._id, { status: 'online' });
@@ -98,7 +110,7 @@ io.on('connection', async (socket) => {
     // Store in active users
     activeUsers.set(socket.id, {
       userId: user._id.toString(),
-      username: user.username || user.email
+      username: user.username
     });
   } else {
     console.log('⚠️ Client connected without authentication');
@@ -108,6 +120,7 @@ io.on('connection', async (socket) => {
   socket.on('user:join', async ({ channelId }) => {
     console.log(`User ${socket.data.userId || socket.id} joining channel: ${channelId}`);
     socket.join(channelId);
+    console.log(`✅ Socket ${socket.id} joined room ${channelId}. Active rooms:`, Object.keys(socket.rooms));
 
     // Add user to channel members if authenticated
     if (socket.data.userId) {
@@ -165,12 +178,12 @@ io.on('connection', async (socket) => {
 
       // Populate user data and convert to plain object
       const populatedMessage = await Message.findById(message._id)
-        .populate('userId', 'username email avatar status')
+        .populate('userId', 'username avatar status')
         .populate({
           path: 'replyTo',
           populate: {
             path: 'userId',
-            select: 'username email avatar'
+            select: 'username avatar'
           }
         })
         .lean();
@@ -182,11 +195,17 @@ io.on('connection', async (socket) => {
 
       // Debug log to check what we're sending
       console.log('Broadcasting message with userId:', typeof messageData.userId === 'object' ?
-        `User object: ${messageData.userId.username || messageData.userId.email}` :
+        `User object: ${messageData.userId.username}` :
         `User ID string: ${messageData.userId}`);
 
       // Broadcast to all users in the channel (including sender)
+      console.log(`🎯 Broadcasting to channel ${channelId}:`, {
+        messageId: messageData._id,
+        content: messageData.content,
+        sender: typeof messageData.userId === 'object' ? messageData.userId.username : messageData.userId,
+      });
       io.to(channelId).emit('message:receive', messageData);
+      console.log(`✅ Message broadcast complete for channel ${channelId}`);
 
     } catch (error) {
       console.error('Error saving message:', error);
@@ -338,7 +357,7 @@ io.on('connection', async (socket) => {
 
   // Handle typing status
   socket.on('user:typing', ({ channelId, isTyping }) => {
-    const username = socket.data.user?.username || socket.data.user?.email || `User_${socket.id.substring(0, 8)}`;
+    const username = socket.data.user?.username || `User_${socket.id.substring(0, 8)}`;
 
     if (isTyping) {
       console.log(`⌨️ ${username} is typing in channel ${channelId}`);

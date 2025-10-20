@@ -6,10 +6,10 @@ import { generateToken } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
-    const { username, email, password, confirmPassword } = await req.json();
+    const { username, password, confirmPassword } = await req.json();
 
     // Validation
-    if (!username || !email || !password || !confirmPassword) {
+    if (!username || !password || !confirmPassword) {
       return NextResponse.json(
         { success: false, error: 'All fields are required' },
         { status: 400 }
@@ -30,15 +30,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid email format' },
-        { status: 400 }
-      );
-    }
-
     // Username validation (3-30 characters, alphanumeric and underscore)
     const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
     if (!usernameRegex.test(username)) {
@@ -50,18 +41,14 @@ export async function POST(req: NextRequest) {
 
     await connectMongoose();
 
-    // Check if user already exists
+    // Check if username already exists
     const existingUser = await User.findOne({
-      $or: [
-        { email: email.toLowerCase() },
-        { username: username.toLowerCase() }
-      ]
+      username: username.toLowerCase()
     });
 
     if (existingUser) {
-      const field = existingUser.email === email.toLowerCase() ? 'Email' : 'Username';
       return NextResponse.json(
-        { success: false, error: `${field} already exists` },
+        { success: false, error: 'Username already exists' },
         { status: 400 }
       );
     }
@@ -69,7 +56,6 @@ export async function POST(req: NextRequest) {
     // Create new user
     const user = new User({
       username,
-      email: email.toLowerCase(),
       password,
       status: 'online',
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random`

@@ -11,11 +11,11 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        email: { label: "Email", type: "email" },
+        username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+        if (!credentials?.username || !credentials?.password) {
           throw new Error('Invalid credentials');
         }
 
@@ -23,7 +23,7 @@ export const authOptions: NextAuthOptions = {
           await connectMongoose();
 
           const user = await User.findOne({
-            email: credentials.email.toLowerCase()
+            username: credentials.username.toLowerCase()
           }).select('+password');
 
           if (!user) {
@@ -43,7 +43,6 @@ export const authOptions: NextAuthOptions = {
 
           return {
             id: user._id.toString(),
-            email: user.email,
             name: user.username,
             image: user.avatar
           };
@@ -57,7 +56,6 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
-        token.email = user.email || '';
         token.name = user.name || '';
         token.picture = user.image || undefined;
       }
@@ -72,7 +70,6 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
-        session.user.email = token.email as string;
         session.user.name = token.name as string;
         session.user.image = token.picture as string;
         // Add a JWT token for Socket.io authentication

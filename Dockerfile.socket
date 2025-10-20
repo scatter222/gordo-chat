@@ -1,0 +1,29 @@
+# Build stage
+FROM mcr.microsoft.com/devcontainers/typescript-node:20-bullseye
+
+WORKDIR /app
+
+# Install dumb-init to handle signals properly
+RUN apt-get update && apt-get install -y --no-install-recommends dumb-init && rm -rf /var/lib/apt/lists/*
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (production only)
+RUN npm ci --omit=dev
+
+# Copy socket server and models
+COPY socket-server.js .
+COPY src/models-cjs ./src/models-cjs
+
+# Expose port
+EXPOSE 3002
+
+# Set environment
+ENV NODE_ENV=production
+
+# Use dumb-init to handle signals
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the socket server
+CMD ["node", "socket-server.js"]

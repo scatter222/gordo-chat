@@ -63,7 +63,7 @@ export function useSocket(options: UseSocketOptions = {}) {
         auth: {
           token: (session as any).token,
           userId: session.user.id,
-          username: session.user.name || session.user.email,
+          username: session.user.name,
         },
         transports: ['websocket', 'polling'],
         reconnection: true,
@@ -106,6 +106,11 @@ export function useSocket(options: UseSocketOptions = {}) {
 
     // Message events
     const handleMessageReceive = (message: Message) => {
+      console.log('📨 message:receive event received:', {
+        messageId: message._id,
+        content: message.content,
+        sender: typeof message.userId === 'object' ? message.userId.username : message.userId,
+      });
       optionsRef.current.onMessageReceive?.(message);
     };
 

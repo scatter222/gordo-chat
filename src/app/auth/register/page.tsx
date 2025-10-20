@@ -22,7 +22,6 @@ export default function RegisterPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     username: '',
-    email: '',
     password: '',
     confirmPassword: '',
   });
@@ -131,20 +130,6 @@ export default function RegisterPage() {
               onChange={handleChange}
               disabled={isLoading}
               helperText="3-30 characters, letters, numbers, and underscores only"
-            />
-
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              type="email"
-              autoComplete="email"
-              value={formData.email}
-              onChange={handleChange}
-              disabled={isLoading}
             />
 
             <TextField

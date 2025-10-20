@@ -1,7 +1,8 @@
 import { MongoClient, Db } from 'mongodb';
 import mongoose from 'mongoose';
 
-const uri = process.env.MONGODB_URI || 'mongodb://admin:admin123@localhost:27017/gordo-chat?authSource=admin';
+// Uses 'mongodb' service name for Docker, localhost for local development
+const uri = process.env.MONGODB_URI || 'mongodb://admin:admin123@mongodb:27017/gordo-chat?authSource=admin';
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
@@ -25,7 +26,8 @@ export async function connectToDatabase() {
 }
 
 // Mongoose connection for models
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:admin123@localhost:27017/gordo-chat?authSource=admin';
+// Uses 'mongodb' service name for Docker, localhost for local development
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:admin123@mongodb:27017/gordo-chat?authSource=admin';
 
 if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable');

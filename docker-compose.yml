@@ -1,44 +1,73 @@
-version: '3.8'
+version: '3.9'
 
 services:
+  # MongoDB Database
   mongo:
-    image: mongo:7.0
-    container_name: gordo-chat-mongo
-    restart: unless-stopped
+    image: mongo:7
+    container_name: gordo-chat-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-admin123}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-gordo-chat}
     ports:
       - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin123
-      MONGO_INITDB_DATABASE: gordo-chat
     volumes:
-      - mongo_data:/data/db
-      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - mongodb_data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - gordo-network
+    restart: unless-stopped
 
-  app:
+  # Next.js Application (frontend + API)
+  nextjs-app:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: gordo-chat-app
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
+      dockerfile: Dockerfile.nextjs
+    container_name: gordo-chat-nextjs
     environment:
       MONGODB_URI: mongodb://admin:admin123@mongo:27017/gordo-chat?authSource=admin
-      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-key-change-in-production}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-to-a-random-string-in-production}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-your-nextauth-secret-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-random-string-in-production}
+      NEXT_PUBLIC_SOCKET_URL: http://socket-server:3002
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+      - "3001:3001"
     depends_on:
-      - mongo
-    volumes:
-      - ./uploads:/app/uploads
+      mongo:
+        condition: service_healthy
     networks:
       - gordo-network
+    restart: unless-stopped
+
+  # Socket.io Real-time Server
+  socket-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.socket
+    container_name: gordo-chat-socket
+    environment:
+      MONGODB_URI: mongodb://admin:admin123@mongo:27017/gordo-chat?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-random-string-in-production}
+      SOCKET_PORT: 3002
+      NODE_ENV: production
+    ports:
+      - "3002:3002"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - gordo-network
+    restart: unless-stopped
 
 volumes:
-  mongo_data:
+  mongodb_data:
     driver: local
 
 networks:

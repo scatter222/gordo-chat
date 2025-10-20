@@ -21,7 +21,7 @@ import NextLink from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +34,7 @@ export default function LoginPage() {
 
     try {
       const result = await signIn('credentials', {
-        email,
+        username,
         password,
         redirect: false,
       });
@@ -83,13 +83,13 @@ export default function LoginPage() {
               margin="normal"
               required
               fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              autoComplete="email"
+              id="username"
+              label="Username"
+              name="username"
+              autoComplete="username"
               autoFocus
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               disabled={isLoading}
             />
 
@@ -142,15 +142,6 @@ export default function LoginPage() {
               </Typography>
             </Box>
 
-            <Box sx={{ mt: 3, p: 2, backgroundColor: 'background.default', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                <strong>Demo Credentials:</strong>
-                <br />
-                Email: demo@example.com
-                <br />
-                Password: demo123
-              </Typography>
-            </Box>
           </Box>
         </Paper>
       </Box>

@@ -2,7 +2,6 @@
 export interface User {
   _id: string;
   username: string;
-  email: string;
   avatar?: string;
   status: 'online' | 'offline' | 'away' | 'busy';
   bio?: string;
@@ -91,13 +90,12 @@ export interface ApiResponse<T = any> {
 
 // Auth types
 export interface LoginCredentials {
-  email: string;
+  username: string;
   password: string;
 }
 
 export interface RegisterData {
   username: string;
-  email: string;
   password: string;
   confirmPassword: string;
 }

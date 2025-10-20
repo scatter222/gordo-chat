@@ -137,7 +137,7 @@ export function MessageItem({
         {!isCompact && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <Typography variant="body1" sx={{ fontWeight: 600 }}>
-              {user?.username || user?.email || 'Unknown User'}
+              {user?.username || 'Unknown User'}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {formatTimestamp(message.createdAt)}
@@ -161,7 +161,7 @@ export function MessageItem({
             }}
           >
             <Typography variant="caption" sx={{ fontWeight: 600 }}>
-              {typeof message.replyTo.userId === 'object' ? (message.replyTo.userId.username || message.replyTo.userId.email) : 'Unknown'}
+              {typeof message.replyTo.userId === 'object' ? (message.replyTo.userId.username || 'Unknown') : 'Unknown'}
             </Typography>
             <Typography variant="body2" noWrap>
               {message.replyTo.content}
